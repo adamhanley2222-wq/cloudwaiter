@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+
+# Local properties
+local.properties
+
+# IDE files
+.idea/
+*.iml
+
+# Keystore files
+*.jks
+*.keystore
+
+# Outputs
+*.apk
+*.aab
