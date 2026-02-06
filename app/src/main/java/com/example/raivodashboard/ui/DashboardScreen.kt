@@ -38,6 +38,7 @@ import com.example.raivodashboard.data.Order
 import com.example.raivodashboard.data.OrderStatus
 import com.epson.epos2.Epos2Exception
 import com.epson.epos2.printer.Printer
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -273,26 +274,28 @@ private suspend fun printToEpsonPrinter(context: Context, order: Order): Pair<Bo
             // 3. Build and send the print data.
             printer.addTextAlign(Printer.ALIGN_CENTER)
             printer.addTextSize(2, 2)
-            printer.addText("Order for: ${order.customerName ?: "N/A"}")
+            printer.addText(order.customerName ?: "N/A")
+            printer.addFeedLine(1)
+            
             printer.addTextSize(1, 1)
             val formattedTime = SimpleDateFormat("HH:mm dd/MM", Locale.getDefault()).format(Date(order.timestamp ?: 0))
-            printer.addText("ID: #${order.id?.takeLast(3)} @ $formattedTime")
+            printer.addText("ID: #${order.id?.takeLast(3)}    @ $formattedTime")
             printer.addFeedLine(1)
+
             printer.addTextAlign(Printer.ALIGN_LEFT)
-            printer.addText("ITEMS:")
             order.items?.forEach { item ->
                 val spice = if (!item.spiceLevel.isNullOrBlank()) " (${item.spiceLevel})" else ""
                 val details = if (!item.details.isNullOrBlank() && item.details != "None") "  - ${item.details}" else ""
-                printer.addText("${item.quantity}x ${item.name}$spice$details")
+                printer.addText("\n${item.quantity}x ${item.name}$spice$details")
             }
 
             printer.addFeedLine(1)
 
             if (!order.specialRequests.isNullOrBlank() && order.specialRequests != "None") {
-                printer.addText("REQUEST:")
+                printer.addText("\nREQUEST:")
                 printer.addTextSize(2, 2)
                 printer.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.TRUE, Printer.PARAM_DEFAULT)
-                printer.addText(order.specialRequests + "")
+                printer.addText("\n${order.specialRequests}")
                 printer.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.PARAM_DEFAULT)
                 printer.addTextSize(1, 1)
                 printer.addFeedLine(1)
@@ -301,21 +304,29 @@ private suspend fun printToEpsonPrinter(context: Context, order: Order): Pair<Bo
             if (!order.pickupTime.isNullOrBlank() && order.pickupTime != "N/A") {
                 printer.addTextSize(2, 2)
                 printer.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.TRUE, Printer.PARAM_DEFAULT)
-                printer.addText("PICKUP: ${order.pickupTime}")
+                printer.addText("\nPICKUP: ${order.pickupTime}")
                 printer.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.PARAM_DEFAULT)
                 printer.addTextSize(1, 1)
             }
 
             order.totalCost?.let {
+                val costAsDouble = when (val cost = it) {
+                    is Double -> cost
+                    is Long -> cost.toDouble()
+                    is String -> cost.replace(Regex("[^\\d.]"), "").toDoubleOrNull()
+                    else -> null
+                } ?: 0.0
+                val formattedTotal = NumberFormat.getCurrencyInstance(Locale.US).format(costAsDouble)
+
                 printer.addTextSize(2, 2)
                 printer.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.TRUE, Printer.PARAM_DEFAULT)
-                printer.addText("TOTAL: $it")
+                printer.addText("\nTOTAL: $formattedTotal")
                 printer.addTextStyle(Printer.FALSE, Printer.FALSE, Printer.FALSE, Printer.PARAM_DEFAULT)
                 printer.addTextSize(1, 1)
                 printer.addFeedLine(1)
             }
 
-            printer.addFeedLine(5)
+            printer.addFeedLine(8)
             
             // 4. Send data within a transaction.
             printer.beginTransaction()

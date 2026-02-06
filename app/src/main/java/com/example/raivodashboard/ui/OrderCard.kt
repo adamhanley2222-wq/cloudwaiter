@@ -38,6 +38,7 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.net.toUri
 
 // Helper to format the timestamp
 private fun formatTimestamp(timestamp: Long?): String {
@@ -49,7 +50,7 @@ private fun formatTimestamp(timestamp: Long?): String {
 
 // Helper to format currency
 private fun formatCurrency(amount: Double): String {
-    return NumberFormat.getCurrencyInstance().format(amount)
+    return NumberFormat.getCurrencyInstance(Locale.US).format(amount)
 }
 
 @Composable
@@ -99,7 +100,7 @@ fun OrderCard(
     var showConversationDialog by remember { mutableStateOf(false) }
 
     if (showConversationDialog && !order.conversationText.isNullOrBlank()) {
-        ConversationDialog(conversationText = order.conversationText!!) {
+        ConversationDialog(conversationText = order.conversationText) {
             showConversationDialog = false
         }
     }
@@ -134,7 +135,7 @@ fun OrderCard(
                     }
                     if (!order.recordingUrl.isNullOrBlank()) {
                         IconButton(onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(order.recordingUrl))
+                            val intent = Intent(Intent.ACTION_VIEW, order.recordingUrl.toUri())
                             context.startActivity(intent)
                         }) {
                             Icon(painter = painterResource(id = R.drawable.ic_play_arrow), contentDescription = "Play Recording")
@@ -238,7 +239,7 @@ fun OrderCard(
                     val costAsDouble = when (val cost = order.totalCost) {
                         is Double -> cost
                         is Long -> cost.toDouble()
-                        is String -> cost.replace(Regex("""[^\d.]"""), "").toDoubleOrNull()
+                        is String -> cost.replace(Regex("[^\\d.]"), "").toDoubleOrNull()
                         else -> null
                     } ?: 0.0
 
