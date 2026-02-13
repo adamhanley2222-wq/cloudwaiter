@@ -44,7 +44,7 @@ import androidx.core.net.toUri
 private fun formatTimestamp(timestamp: Long?): String {
     if (timestamp == null) return ""
     val date = Date(timestamp)
-    val format = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val format = SimpleDateFormat("EEE, HH:mm", Locale.getDefault())
     return format.format(date)
 }
 
@@ -54,12 +54,12 @@ private fun formatCurrency(amount: Double): String {
 }
 
 @Composable
-fun ConversationDialog(conversationText: String, onDismiss: () -> Unit) {
+fun ConversationDialog(conversationTranscript: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Conversation Transcript") },
         text = {
-            val lines = conversationText.split(Regex("(?=agent:)|(?=user:)"))
+            val lines = conversationTranscript.split(Regex("(?=agent:)|(?=user:)"))
             LazyColumn {
                 items(lines.filter { it.isNotBlank() }) { line ->
                     val annotatedString = buildAnnotatedString {
@@ -99,8 +99,8 @@ fun OrderCard(
     val context = LocalContext.current
     var showConversationDialog by remember { mutableStateOf(false) }
 
-    if (showConversationDialog && !order.conversationText.isNullOrBlank()) {
-        ConversationDialog(conversationText = order.conversationText) {
+    if (showConversationDialog && !order.conversationTranscript.isNullOrBlank()) {
+        ConversationDialog(conversationTranscript = order.conversationTranscript!!) {
             showConversationDialog = false
         }
     }
@@ -126,10 +126,10 @@ fun OrderCard(
                 Text(formatTimestamp(order.timestamp), fontSize = 10.sp, color = Color.Black)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Log the conversation text to help debug why the button might not be showing
-                    Log.d("OrderCardDebug", "Order #${order.id?.takeLast(3)} | conversationText: '${order.conversationText}'")
+                    // Log the conversation transcript to help debug why the button might not be showing
+                    Log.d("OrderCardDebug", "Order #${order.id?.takeLast(3)} | conversationTranscript: '${order.conversationTranscript}'")
 
-                    if (!order.conversationText.isNullOrBlank()) {
+                    if (!order.conversationTranscript.isNullOrBlank()) {
                         CompactButton(onClick = { showConversationDialog = true }, text = "T")
                         Spacer(Modifier.width(4.dp))
                     }

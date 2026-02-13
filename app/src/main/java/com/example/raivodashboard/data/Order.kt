@@ -13,7 +13,10 @@ data class Order(
     val specialRequests: String? = null,
     val totalCost: Any? = null,
     val recordingUrl: String? = null,
-    val conversationText: String? = null
+    val conversationTranscript: String? = null,
+    val callSid: String? = null,
+    val deliveryAddress: String? = null,
+    val orderType: String? = null
 )
 
 @Keep
