@@ -35,41 +35,10 @@ class DashboardViewModel : ViewModel() {
 
             val orders = snapshots.documents.mapNotNull { doc ->
                 try {
-                    Log.d("DashboardViewModel", "Document data for ${doc.id}: ${doc.data}")
                     doc.toObject(Order::class.java)?.copy(id = doc.id)
                 } catch (e: Exception) {
                     Log.e("DashboardViewModel", "Failed to deserialize document ${doc.id}", e)
-                    // Attempt to manually deserialize if automatic mapping fails
-                    try {
-                        val data = doc.data
-                        val statusString = data?.get("status") as? String
-                        val status = try {
-                            statusString?.let { OrderStatus.valueOf(it) }
-                        } catch (e: IllegalArgumentException) {
-                            Log.w("DashboardViewModel", "Unknown OrderStatus value: $statusString for doc ${doc.id}")
-                            null // Set status to null if it's an unknown value
-                        }
-
-                        Order(
-                            id = doc.id,
-                            customerName = data?.get("customerName") as? String,
-                            // Assuming 'items' is a List of Maps that can be converted to OrderItem
-                            items = null, // Manual deserialization of nested objects is more complex
-                            status = status,
-                            timestamp = data?.get("timestamp") as? Long,
-                            pickupTime = data?.get("pickupTime") as? String,
-                            specialRequests = data?.get("specialRequests") as? String,
-                            totalCost = data?.get("totalCost"),
-                            recordingUrl = data?.get("recordingUrl") as? String,
-                            conversationTranscript = data?.get("conversationTranscript") as? String,
-                            callSid = data?.get("callSid") as? String,
-                            deliveryAddress = data?.get("deliveryAddress") as? String,
-                            orderType = data?.get("orderType") as? String
-                        )
-                    } catch (manualError: Exception) {
-                        Log.e("DashboardViewModel", "Manual deserialization also failed for doc ${doc.id}", manualError)
-                        null
-                    }
+                    null
                 }
             }
 

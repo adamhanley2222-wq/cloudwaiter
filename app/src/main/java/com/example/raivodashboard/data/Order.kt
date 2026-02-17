@@ -16,7 +16,9 @@ data class Order(
     val conversationTranscript: String? = null,
     val callSid: String? = null,
     val deliveryAddress: String? = null,
-    val orderType: String? = null
+    val orderType: String? = null,
+    val callerPhone: Long? = null,
+    val customerPhone: Long? = null
 )
 
 @Keep

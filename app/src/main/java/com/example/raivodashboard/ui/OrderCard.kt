@@ -53,6 +53,22 @@ private fun formatCurrency(amount: Double): String {
     return NumberFormat.getCurrencyInstance(Locale.US).format(amount)
 }
 
+// Helper to format phone number
+private fun formatPhoneNumber(phone: Long?): String {
+    if (phone == null) return ""
+    val phoneStr = phone.toString()
+    val localNumber = if (phoneStr.startsWith("61")) {
+        "0" + phoneStr.substring(2)
+    } else {
+        phoneStr
+    }
+
+    if (localNumber.length == 10) {
+        return localNumber.substring(0, 4) + " " + localNumber.substring(4, 7) + " " + localNumber.substring(7, 10)
+    }
+    return localNumber
+}
+
 @Composable
 fun ConversationDialog(conversationTranscript: String, onDismiss: () -> Unit) {
     AlertDialog(
@@ -141,7 +157,13 @@ fun OrderCard(
                             Icon(painter = painterResource(id = R.drawable.ic_play_arrow), contentDescription = "Play Recording")
                         }
                     }
-                    Text(order.customerName ?: "Unknown", fontSize = 16.sp, color = Color.Black)
+                    Column {
+                        Text(order.customerName ?: "Unknown", fontSize = 16.sp, color = Color.Black)
+                        val phone = order.callerPhone ?: order.customerPhone
+                        phone?.let {
+                            Text(formatPhoneNumber(it), fontSize = 12.sp, color = Color.Black)
+                        }
+                    }
                 }
 
                 Text(order.status?.name ?: "Unknown", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
