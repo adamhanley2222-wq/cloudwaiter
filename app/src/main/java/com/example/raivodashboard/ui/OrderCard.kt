@@ -199,13 +199,32 @@ fun OrderCard(
             // Items list (full width)
             Column(modifier = Modifier.fillMaxWidth()) {
                 (order.items ?: emptyList()).forEach { item ->
-                    val spice = if (!item.spiceLevel.isNullOrBlank()) " (${item.spiceLevel})" else ""
-                    val details = if (!item.details.isNullOrBlank() && item.details != "None") " - ${item.details}" else ""
                     Text(
-                        text = "${item.quantity ?: 0}x ${item.name ?: "Item"}$spice$details",
+                        text = "${item.quantity ?: 0}x ${item.name ?: "Item"}",
                         fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
                         color = Color.Black
                     )
+
+                    val variations = mutableListOf<String>()
+                    if (!item.spiceLevel.isNullOrBlank()) {
+                        variations.add("Spice: ${item.spiceLevel}")
+                    }
+                    if (!item.details.isNullOrBlank() && item.details != "None") {
+                        variations.addAll(item.details!!.split(',').map { it.trim() }.filter { it.isNotBlank() })
+                    }
+
+                    if (variations.isNotEmpty()) {
+                        Column(modifier = Modifier.padding(start = 32.dp)) {
+                            variations.forEach { variation ->
+                                Text(
+                                    text = "> $variation",
+                                    fontSize = 14.sp,
+                                    color = Color.Black
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

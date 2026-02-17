@@ -10,12 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Tab
@@ -47,19 +44,17 @@ sealed class DashboardTab(val title: String) {
     object New : DashboardTab("NEW")
     object Preparing : DashboardTab("PREP")
     object Ready : DashboardTab("READY")
-    object ChefsList : DashboardTab("CHEF")
     object Completed : DashboardTab("HISTORY")
     object Cancelled : DashboardTab("CXL")
 }
 
-private val tabs = listOf(DashboardTab.New, DashboardTab.Preparing, DashboardTab.ChefsList, DashboardTab.Ready, DashboardTab.Completed, DashboardTab.Cancelled)
+private val tabs = listOf(DashboardTab.New, DashboardTab.Preparing, DashboardTab.Ready, DashboardTab.Completed, DashboardTab.Cancelled)
 
 private fun colorForTab(tab: DashboardTab): Color {
     return when (tab) {
         DashboardTab.New -> Color(0xFF4A90E2)
         DashboardTab.Preparing -> Color(0xFFFFD700)
         DashboardTab.Ready -> Color(0xFF7ED321)
-        DashboardTab.ChefsList -> Color.DarkGray
         DashboardTab.Completed -> Color(0xFFBDBDBD)
         DashboardTab.Cancelled -> Color(0xFFD0021B)
     }
@@ -109,7 +104,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = viewModel()) {
             requestPermissionLauncher.launch(permissionsNotGranted.toTypedArray())
         } else {
             epsonPrinter.print(order)
-            Toast.makeText(context, "Printing order #${order.id?.takeLast(3)}...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Printing order #${order.id?.takeLast(3) ?: ""}...", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -163,77 +158,30 @@ fun DashboardScreen(viewModel: DashboardViewModel = viewModel()) {
             }
         }
 
-        when (selectedTab) {
-            is DashboardTab.ChefsList -> {
-                val preparingOrders = uiState.orders.filter { it.status == OrderStatus.PREPARING }
-                val itemCounts = preparingOrders
-                    .flatMap { it.items ?: emptyList() }
-                    .groupBy {
-                        val spice = if (!it.spiceLevel.isNullOrBlank()) " (${it.spiceLevel})" else ""
-                        val details = if (!it.details.isNullOrBlank() && it.details != "None") " - ${it.details}" else ""
-                        (it.name ?: "Unknown Item") + spice + details
-                    }
-                    .mapValues { entry -> entry.value.sumOf { it.quantity ?: 0 } }
-                    .toList()
-                    .sortedByDescending { it.second }
+        val filteredOrders = when (selectedTab) {
+            DashboardTab.New -> uiState.orders.filter { it.status == OrderStatus.NEW }
+            DashboardTab.Preparing -> uiState.orders.filter { it.status == OrderStatus.PREPARING }
+            DashboardTab.Ready -> uiState.orders.filter { it.status == OrderStatus.READY }
+            DashboardTab.Completed -> uiState.orders.filter { it.status == OrderStatus.COMPLETED }
+            DashboardTab.Cancelled -> uiState.orders.filter { it.status == OrderStatus.CANCELLED }
+        }
 
-                val specialRequests = preparingOrders
-                    .mapNotNull { it.specialRequests }
-                    .filter { it.isNotBlank() }
-
-                LazyColumn(modifier = Modifier.padding(16.dp)) {
-                    item {
-                        Text("Consolidated Items", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                    items(itemCounts) { (itemName, count) ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Text("$count x", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Spacer(modifier = Modifier.padding(horizontal = 8.dp))
-                            Text(itemName, fontSize = 16.sp)
+        LazyColumn {
+            items(filteredOrders) { order ->
+                OrderCard(
+                    order = order,
+                    onStatusChange = { newStatus ->
+                        if (order.status == OrderStatus.NEW && newStatus == OrderStatus.PREPARING) {
+                            requestPermissionsAndPrint(order)
                         }
+                        order.id?.let { id -> viewModel.updateOrderStatus(id, newStatus) }
+                    },
+                    cardColor = selectedColor,
+                    onPrint = {
+                        Log.d("DashboardScreen", "Print button clicked for order: ${order.id}")
+                        requestPermissionsAndPrint(order)
                     }
-
-                    if (specialRequests.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Text("Special Requests", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                        items(specialRequests) {
-                            Text("• $it", fontWeight = FontWeight.Bold, fontSize = 24.sp, modifier = Modifier.padding(vertical = 4.dp))
-                        }
-                    }
-                }
-            }
-            else -> {
-                val filteredOrders = when (selectedTab) {
-                    DashboardTab.New -> uiState.orders.filter { it.status == OrderStatus.NEW }
-                    DashboardTab.Preparing -> uiState.orders.filter { it.status == OrderStatus.PREPARING }
-                    DashboardTab.Ready -> uiState.orders.filter { it.status == OrderStatus.READY }
-                    DashboardTab.Completed -> uiState.orders.filter { it.status == OrderStatus.COMPLETED }
-                    DashboardTab.Cancelled -> uiState.orders.filter { it.status == OrderStatus.CANCELLED }
-                    else -> emptyList()
-                }
-
-                LazyColumn {
-                    items(filteredOrders) { order ->
-                        OrderCard(
-                            order = order,
-                            onStatusChange = { newStatus ->
-                                if (order.status == OrderStatus.NEW && newStatus == OrderStatus.PREPARING) {
-                                    requestPermissionsAndPrint(order)
-                                }
-                                order.id?.let { id -> viewModel.updateOrderStatus(id, newStatus) }
-                            },
-                            cardColor = selectedColor,
-                            onPrint = {
-                                Log.d("DashboardScreen", "Print button clicked for order: ${order.id}")
-                                requestPermissionsAndPrint(order)
-                            }
-                        )
-                    }
-                }
+                )
             }
         }
     }
