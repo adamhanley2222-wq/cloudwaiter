@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Raivo Dashboard"
+rootProject.name = "Cloud Waiter"
 include(":app")
