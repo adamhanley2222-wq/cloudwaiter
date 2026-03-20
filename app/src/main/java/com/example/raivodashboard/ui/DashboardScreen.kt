@@ -2,6 +2,7 @@ package com.example.raivodashboard.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
@@ -10,7 +11,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,6 +19,8 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.raivodashboard.EpsonPrinter
+import com.example.raivodashboard.R
 import com.example.raivodashboard.data.Order
 import com.example.raivodashboard.data.OrderStatus
 
@@ -68,6 +71,9 @@ fun DashboardScreen(viewModel: DashboardViewModel = viewModel()) {
 
     val epsonPrinter = remember { EpsonPrinter(context) }
     var orderToPrint by remember { mutableStateOf<Order?>(null) }
+
+    // Keep track of which order IDs have been auto-printed in this session
+    val autoPrintedOrderIds = remember { mutableStateOf(setOf<String>()) }
 
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -105,6 +111,49 @@ fun DashboardScreen(viewModel: DashboardViewModel = viewModel()) {
         } else {
             epsonPrinter.print(order)
             Toast.makeText(context, "Printing order #${order.id?.takeLast(3) ?: ""}...", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Sound logic: plays zenbell.mp3 while there are NEW orders
+    val hasNewOrders = uiState.orders.any { it.status == OrderStatus.NEW }
+    val mediaPlayer = remember {
+        MediaPlayer.create(context, R.raw.zenbell).apply {
+            isLooping = true
+        }
+    }
+
+    LaunchedEffect(hasNewOrders) {
+        if (hasNewOrders) {
+            if (!mediaPlayer.isPlaying) {
+                mediaPlayer.start()
+            }
+        } else {
+            if (mediaPlayer.isPlaying) {
+                mediaPlayer.pause()
+                mediaPlayer.seekTo(0)
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaPlayer.stop()
+            mediaPlayer.release()
+        }
+    }
+
+    // Auto-print logic: triggered whenever uiState.orders changes
+    LaunchedEffect(uiState.orders) {
+        val newOrdersToPrint = uiState.orders.filter { order ->
+            order.status == OrderStatus.NEW && 
+            order.id != null && 
+            !autoPrintedOrderIds.value.contains(order.id)
+        }
+
+        newOrdersToPrint.forEach { order ->
+            Log.d("DashboardScreen", "Auto-printing new order: ${order.id}")
+            requestPermissionsAndPrint(order)
+            autoPrintedOrderIds.value = autoPrintedOrderIds.value + order.id!!
         }
     }
 
@@ -171,9 +220,6 @@ fun DashboardScreen(viewModel: DashboardViewModel = viewModel()) {
                 OrderCard(
                     order = order,
                     onStatusChange = { newStatus ->
-                        if (order.status == OrderStatus.NEW && newStatus == OrderStatus.PREPARING) {
-                            requestPermissionsAndPrint(order)
-                        }
                         order.id?.let { id -> viewModel.updateOrderStatus(id, newStatus) }
                     },
                     cardColor = selectedColor,

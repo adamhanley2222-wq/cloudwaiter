@@ -41,6 +41,21 @@ class EpsonPrinter(private val context: Context) {
         }
     }
 
+    private fun formatPhoneNumber(phone: Long?): String {
+        if (phone == null) return "N/A"
+        val phoneStr = phone.toString()
+        val localNumber = if (phoneStr.startsWith("61")) {
+            "0" + phoneStr.substring(2)
+        } else {
+            phoneStr
+        }
+
+        if (localNumber.length == 10) {
+            return localNumber.substring(0, 4) + " " + localNumber.substring(4, 7) + " " + localNumber.substring(7, 10)
+        }
+        return localNumber
+    }
+
     fun print(order: Order) {
         if (mPrinterTarget == null) {
             Log.d("EpsonPrinter", "Printer not yet discovered. Starting discovery.")
@@ -118,10 +133,12 @@ class EpsonPrinter(private val context: Context) {
             printer.addText("------------------------------------------\n")
             printer.addFeedLine(1)
 
-            // Customer Name
+            // Customer Name & Phone
             printer.addTextAlign(Printer.ALIGN_LEFT)
             printer.addTextSize(2, 2)
-            printer.addText("Name: ${order.customerName ?: "N/A"}\n\n")
+            printer.addText("Name: ${order.customerName ?: "N/A"}\n")
+            val phone = order.callerPhone ?: order.customerPhone
+            printer.addText("Phone: ${formatPhoneNumber(phone)}\n\n")
             printer.addTextSize(1, 1)
 
             // Items
