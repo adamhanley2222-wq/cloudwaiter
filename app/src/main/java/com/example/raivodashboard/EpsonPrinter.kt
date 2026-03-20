@@ -7,20 +7,25 @@ import com.epson.epos2.discovery.Discovery
 import com.epson.epos2.discovery.DiscoveryListener
 import com.epson.epos2.discovery.FilterOption
 import com.epson.epos2.printer.Printer
+import com.epson.epos2.printer.PrinterStatusInfo
 import com.example.raivodashboard.data.Order
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.LinkedList
 import java.util.Locale
+import java.util.Queue
 
 class EpsonPrinter(private val context: Context) {
 
     private var mPrinter: Printer? = null
     private var mPrinterTarget: String? = null
-    private var mPrinterSeries: Int = -1 // Variable to hold the correct printer series
-    private var orderForFirstPrint: Order? = null // Variable to hold order for the first print job
+    private var mPrinterSeries: Int = -1 
+    private val mPrintQueue: Queue<Order> = LinkedList()
+    private var isPrinting: Boolean = false
 
     private val mDiscoveryListener = DiscoveryListener { deviceInfo ->
+        Log.d("EpsonPrinter", "Discovery found device: ${deviceInfo.deviceName}")
         if (deviceInfo.deviceName.startsWith("TM-T88")) {
             try {
                 Discovery.stop()
@@ -32,12 +37,10 @@ class EpsonPrinter(private val context: Context) {
 
             mPrinterTarget = deviceInfo.target
             mPrinterSeries = deviceInfo.deviceType
-            Log.d("EpsonPrinter", "Found printer: ${deviceInfo.deviceName}, Series: $mPrinterSeries, Target: $mPrinterTarget")
+            Log.d("EpsonPrinter", "Target Printer Found: ${deviceInfo.deviceName}, Series: $mPrinterSeries, Target: $mPrinterTarget")
 
-            orderForFirstPrint?.let {
-                print(it)
-                orderForFirstPrint = null
-            }
+            // Process any queued orders once discovery is finished
+            processQueue()
         }
     }
 
@@ -56,22 +59,40 @@ class EpsonPrinter(private val context: Context) {
         return localNumber
     }
 
+    @Synchronized
     fun print(order: Order) {
+        mPrintQueue.add(order)
+        Log.d("EpsonPrinter", "Order added to print queue. Queue size: ${mPrintQueue.size}")
+        
         if (mPrinterTarget == null) {
-            Log.d("EpsonPrinter", "Printer not yet discovered. Starting discovery.")
-            orderForFirstPrint = order
+            Log.d("EpsonPrinter", "Printer target is null. Starting discovery.")
             startDiscovery()
             return
         }
 
-        Log.d("EpsonPrinter", "Printer already discovered. Printing directly.")
+        if (!isPrinting) {
+            processQueue()
+        } else {
+            Log.d("EpsonPrinter", "Printer is already busy. Order will print when current job is finished.")
+        }
+    }
+
+    @Synchronized
+    private fun processQueue() {
+        if (isPrinting) return
+        
+        val nextOrder = mPrintQueue.poll() ?: return
+        isPrinting = true
+        
+        Log.d("EpsonPrinter", "Processing next order in queue: #${nextOrder.id?.takeLast(3)}")
         Thread {
-            runPrintSequence(order)
+            runPrintSequence(nextOrder)
         }.start()
     }
 
     private fun startDiscovery() {
         try {
+            Log.d("EpsonPrinter", "Starting Bluetooth discovery...")
             val filterOption = FilterOption()
             filterOption.deviceType = Discovery.TYPE_PRINTER
             filterOption.epsonFilter = Discovery.FILTER_NONE
@@ -83,39 +104,66 @@ class EpsonPrinter(private val context: Context) {
     }
 
     private fun runPrintSequence(order: Order) {
-        if (!initializeObject()) return
+        Log.d("EpsonPrinter", "Beginning print sequence for order #${order.id?.takeLast(3)}")
+        if (!initializeObject()) {
+            Log.e("EpsonPrinter", "Failed to initialize printer object.")
+            onPrintFinished()
+            return
+        }
         if (!createReceiptData(order)) {
+            Log.e("EpsonPrinter", "Failed to create receipt data.")
             finalizeObject()
+            onPrintFinished()
             return
         }
         if (!sendData()) {
-            // Finalize/disconnect is handled within sendData on failure
+            Log.e("EpsonPrinter", "Failed to send data to printer.")
+            // onPrintFinished() will be called from finalizeObject/disconnect failures in sendData logic
+            // But let's add it here to be safe if sendData doesn't clean up
+            finalizeObject()
+            onPrintFinished()
         }
     }
 
     private fun initializeObject(): Boolean {
         if (mPrinterSeries == -1) {
-            Log.e("EpsonPrinter", "Printer series not yet discovered. Cannot initialize object.")
+            Log.e("EpsonPrinter", "Printer series is unknown.")
             return false
         }
         try {
             mPrinter = Printer(mPrinterSeries, Printer.MODEL_ANK, context)
+            Log.d("EpsonPrinter", "Printer object initialized.")
         } catch (e: Epos2Exception) {
             Log.e("EpsonPrinter", "Error creating printer object: ${e.errorStatus}")
             return false
         }
 
         mPrinter?.setReceiveEventListener { _, code, status, _ ->
-            Log.d("EpsonPrinter", "Print job finished. Code: $code")
+            Log.d("EpsonPrinter", "Receive Event Callback - Code: $code")
+            logStatus(status)
             disconnectPrinter()
             finalizeObject()
+            onPrintFinished()
         }
         return true
+    }
+
+    @Synchronized
+    private fun onPrintFinished() {
+        isPrinting = false
+        Log.d("EpsonPrinter", "Print job finished. Checking for more orders in queue...")
+        processQueue()
+    }
+
+    private fun logStatus(status: PrinterStatusInfo?) {
+        if (status == null) return
+        Log.d("EpsonPrinter", "Printer Status: Connection=${status.connection}, Online=${status.online}, Paper=${status.paper}")
     }
 
     private fun createReceiptData(order: Order): Boolean {
         val printer = mPrinter ?: return false
         try {
+            Log.d("EpsonPrinter", "Building receipt data...")
             // Header
             printer.addTextAlign(Printer.ALIGN_CENTER)
             printer.addTextSize(2, 2)
@@ -193,6 +241,7 @@ class EpsonPrinter(private val context: Context) {
 
             printer.addFeedLine(5)
             printer.addCut(Printer.CUT_FEED)
+            Log.d("EpsonPrinter", "Receipt data build complete.")
 
         } catch (e: Epos2Exception) {
             Log.e("EpsonPrinter", "Error creating receipt data: ${e.errorStatus}")
@@ -204,24 +253,25 @@ class EpsonPrinter(private val context: Context) {
     private fun sendData(): Boolean {
         val printer = mPrinter ?: return false
 
+        Log.d("EpsonPrinter", "Attempting to connect to printer at $mPrinterTarget...")
         if (!connectPrinter()) {
-            finalizeObject()
+            Log.e("EpsonPrinter", "Connection failed.")
             return false
         }
 
         try {
+            Log.d("EpsonPrinter", "Sending data to printer...")
             printer.beginTransaction()
             printer.sendData(Printer.PARAM_DEFAULT)
-            Log.d("EpsonPrinter", "Sent print data. Waiting for async callback to disconnect.")
+            Log.d("EpsonPrinter", "Data sent. Waiting for completion...")
         } catch (e: Epos2Exception) {
-            Log.e("EpsonPrinter", "Error sending data: ${e.errorStatus}")
+            Log.e("EpsonPrinter", "Error during sendData: ${e.errorStatus}")
             try {
                 printer.endTransaction()
             } catch (ex: Epos2Exception) {
                 // ignore
             }
             disconnectPrinter()
-            finalizeObject()
             return false
         }
 
@@ -232,8 +282,9 @@ class EpsonPrinter(private val context: Context) {
         val printer = mPrinter ?: return false
         try {
             printer.connect(mPrinterTarget, Printer.PARAM_DEFAULT)
+            Log.d("EpsonPrinter", "Printer connected successfully.")
         } catch (e: Epos2Exception) {
-            Log.e("EpsonPrinter", "Error connecting to printer: ${e.errorStatus}")
+            Log.e("EpsonPrinter", "Connection error: ${e.errorStatus}")
             return false
         }
         return true
@@ -241,13 +292,16 @@ class EpsonPrinter(private val context: Context) {
 
     private fun disconnectPrinter() {
         try {
+            Log.d("EpsonPrinter", "Disconnecting printer...")
             mPrinter?.disconnect()
         } catch (e: Epos2Exception) {
-            Log.e("EpsonPrinter", "Error disconnecting printer: ${e.errorStatus}")
+            Log.e("EpsonPrinter", "Error during disconnect: ${e.errorStatus}")
         }
     }
 
     private fun finalizeObject() {
+        Log.d("EpsonPrinter", "Finalizing printer object.")
+        mPrinter?.clearCommandBuffer()
         mPrinter?.setReceiveEventListener(null)
         mPrinter = null
     }

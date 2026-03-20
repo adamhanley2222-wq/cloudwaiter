@@ -114,10 +114,10 @@ fun DashboardScreen(viewModel: DashboardViewModel = viewModel()) {
         }
     }
 
-    // Sound logic: plays zenbell.mp3 while there are NEW orders
+    // Sound logic: plays ding.wav while there are NEW orders
     val hasNewOrders = uiState.orders.any { it.status == OrderStatus.NEW }
     val mediaPlayer = remember {
-        MediaPlayer.create(context, R.raw.zenbell).apply {
+        MediaPlayer.create(context, R.raw.ding).apply {
             isLooping = true
         }
     }
